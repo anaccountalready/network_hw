@@ -12,6 +12,7 @@ typedef struct conn {
 	SOCKADDR_IN addrClient;
 	SOCKET sockConn;
 	int len = sizeof(addrClient);
+	char currentRoom[7] = "public"; // "public" for public room, 4-digit string for private room
 }CON;
 class node{
 public:
@@ -26,7 +27,7 @@ public:
 		next = NULL;
 	}
 };
-static int num = 0;//当前接受的socket数目
+static int num = 0;//锟斤拷前锟斤拷锟杰碉拷socket锟斤拷目
 class list {
 public:
 	node* first;
@@ -81,68 +82,129 @@ public:
 		}
 	}
 
+	// Find a node by socket
+	node* findBySocket(SOCKET sock) {
+		if (isempty()) return NULL;
+		node* p = first;
+		do {
+			if (p->cc.sockConn == sock) {
+				return p;
+			}
+			p = p->next;
+		} while (p != first);
+		return NULL;
+	}
+
+	// Count clients in a specific room
+	int countClientsInRoom(const char* room) {
+		if (isempty()) return 0;
+		int count = 0;
+		node* p = first;
+		do {
+			if (strcmp(p->cc.currentRoom, room) == 0) {
+				count++;
+			}
+			p = p->next;
+		} while (p != first);
+		return count;
+	}
+
 };
 void flush(char* a) {
 	memset(a, 0, sizeof(a));
 }
-//线程处理函数
+
+// Function to forward message to clients in the same room
+void forwardToRoom(list* cl, node* sender, const char* message) {
+	if (cl->isempty()) return;
+	
+	node* p = cl->first;
+	char roomToForward[7];
+	strcpy_s(roomToForward, sender->cc.currentRoom);
+	
+	do {
+		if (p != sender && strcmp(p->cc.currentRoom, roomToForward) == 0) {
+			send(p->cc.sockConn, message, 255, 0);
+			cout << "Forward to client " << p->cc.sockConn << " in room " << roomToForward << " message:" << message << endl;
+		}
+		p = p->next;
+	} while (p != cl->first);
+}
+
+//Thread function
 void hthreadfun(list*cl,node* newnode) {
-	//接收并发送来自该线程监听的信息
+	//Processing received data and forward to other clients in the same room
 	while (1) {
 		flush(recvBuf);
 		if (recv((newnode->cc).sockConn, recvBuf, 255, 0) == SOCKET_ERROR) {
 			if (WSAGetLastError() == 10054) {
-				sprintf_s(recvBuf, "%d已退出聊天室", (newnode->cc).sockConn);
+				// Client disconnected
+				sprintf_s(recvBuf, "%d has exited the chat", (newnode->cc).sockConn);
+				forwardToRoom(cl, newnode, recvBuf);
+				
 				num--;
-				cout << "当前人数" << num << endl;
+				cout << "Current number of clients: " << num << endl;
 				cl->del(newnode);
-				closesocket((newnode->cc).sockConn);//关闭socket
-				if (num != 0) {
-					node* p = cl->first;
-					if (num == 1) {
-						send((p->cc).sockConn, recvBuf, 255, 0);
-						cout << "服务器向" << (p->cc).sockConn << "转发信息:" << recvBuf << endl;
-					}
-					else
-					while (p->next!=cl->first) {
-							send((p->cc).sockConn, recvBuf, 255, 0);
-							cout << "服务器向" << (p->cc).sockConn << "转发信息:" << recvBuf << endl;
-							p = p->next;
-							if (p->next == cl->first) {
-								send((p->cc).sockConn, recvBuf, 255, 0);
-								cout << "服务器向" << (p->cc).sockConn << "转发信息:" << recvBuf << endl;
-							}
-						}
-
-				}
-
-			
+				closesocket((newnode->cc).sockConn);//Close socket
+				return;
 			}
 			else cout << "recv error:" << WSAGetLastError() << endl;
 			return;
 		}
 		else if (strlen(recvBuf) != 0) {
-			cout << "服务器接收到" <<(newnode->cc).sockConn << "的信息:" << recvBuf << endl;
-			if (num > 1) {
-				node* p = cl->first;
-				while (p->next != cl->first) {
-					if (p != newnode) {
-						send((p->cc).sockConn, recvBuf, 255, 0);
-						cout << "服务器向" << (p->cc).sockConn << "转发信息:" << recvBuf << endl;
-						p = p->next;
-					}
-					else if (p == newnode) {
-						p = p->next;
-					}
-					if (p->next == cl->first&&p!=newnode)
-					{
-						send((p->cc).sockConn, recvBuf, 255, 0);
-						cout << "服务器向" << (p->cc).sockConn << "转发信息:" << recvBuf << endl;
-					}
+			cout << "Received from client " << (newnode->cc).sockConn << " in room " << (newnode->cc).currentRoom << " message:" << recvBuf << endl;
+			
+			// Check if it's a command
+			if (recvBuf[0] == '/') {
+				// Process command
+				char command[20];
+				char parameter[20];
+				sscanf_s(recvBuf, "%s %s", command, sizeof(command), parameter, sizeof(parameter));
+				
+				if (strcmp(command, "/join") == 0) {
+					// Join a room
+					strcpy_s((newnode->cc).currentRoom, parameter);
+					cout << "Client " << (newnode->cc).sockConn << " joined room " << parameter << endl;
 					
+					// Send confirmation to client
+					char response[255];
+					if (strcmp(parameter, "public") == 0) {
+						sprintf_s(response, "You are now in the public room");
+					} else {
+						sprintf_s(response, "You are now in private room %s", parameter);
+					}
+					send((newnode->cc).sockConn, response, 255, 0);
 				}
+				else if (strcmp(command, "/create") == 0) {
+					// Create private room
+					int clientsInRoom = cl->countClientsInRoom(parameter);
+					
+					if (clientsInRoom == 0) {
+						// Room doesn't exist, create it
+						strcpy_s((newnode->cc).currentRoom, parameter);
+						cout << "Client " << (newnode->cc).sockConn << " created room " << parameter << endl;
+						
+						// Send confirmation to client
+						char response[255];
+						sprintf_s(response, "Private room %s created successfully", parameter);
+						send((newnode->cc).sockConn, response, 255, 0);
+					} else {
+						// Room exists, join it
+						strcpy_s((newnode->cc).currentRoom, parameter);
+						cout << "Client " << (newnode->cc).sockConn << " joined existing room " << parameter << endl;
+						
+						// Send confirmation to client
+						char response[255];
+						sprintf_s(response, "Room %s exists, joined successfully", parameter);
+						send((newnode->cc).sockConn, response, 255, 0);
+					}
+				}
+				flush(recvBuf);
+				continue;
 			}
-
+			
+			// Forward message to clients in the same room
+			forwardToRoom(cl, newnode, recvBuf);
 		}
 		else { }
 
@@ -153,7 +215,7 @@ void hthreadfun(list*cl,node* newnode) {
 int main() {
 	WSACleanup();
 	int port;
-	cout << "请输入服务器端口号：";
+	cout << "Please enter the listening port:";
 	cin >> port;
 	WORD wVersionRequested = MAKEWORD(2, 2);
 	WSADATA wsaData;
@@ -162,25 +224,25 @@ int main() {
 
 		cout << "WSAStartup() failed" << endl;
 		return 0;
-	}//初始化Socket DLL，协商使用的Socket版本
+	}//Initialize Socket DLL and specify Socket version
 
-	SOCKET sockSrv = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);//创建一个Socket，并绑定到一个特定的传输层服务，协议为TCP/IP
+	SOCKET sockSrv = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);//Create a Socket, using TCP/IP protocol
 	if (sockSrv == INVALID_SOCKET) {
 		cout << " socket error!report error:" << WSAGetLastError() << endl;
 	}
 
-	//配置监听的ip地址和端口
+	//Set server IP address and port
 	SOCKADDR_IN addrSrv;
 	memset(&addrSrv, 0, sizeof(addrSrv));
 	addrSrv.sin_family = AF_INET;//IPv4
-	addrSrv.sin_addr.S_un.S_addr = inet_addr("0.0.0.0");//IP地址
-	addrSrv.sin_port = htons(port);//端口号
+	addrSrv.sin_addr.S_un.S_addr = inet_addr("0.0.0.0");//IP address
+	addrSrv.sin_port = htons(port);//Port
 
 
 	if (bind(sockSrv, (SOCKADDR*)&addrSrv, sizeof(SOCKADDR)) == SOCKET_ERROR) {
 		cout << "bind error,report error:" << WSAGetLastError() << endl;
 
-	}//将地址绑定到指定Socket
+	}//Bind address to the specified Socket
 	else { cout << "bind succeed!!" << endl; }
 
 
@@ -188,23 +250,25 @@ int main() {
 		cout << "listen error!report error:" << WSAGetLastError() << endl;
 		return 1;
 
-	}//使Socket进入监听状态，监听远程连接是否到来
+	}//Set Socket to listening state, wait for client connections
 	else { cout << "listening....." << endl; }
 
 	list *connlist=new list();
 	while (1) {
 		CON a;
-		a.sockConn  = accept(sockSrv, (SOCKADDR*)&a.addrClient, &a.len);//接受特定socket请求等待队列中的连接请求//通常运行后阻塞，直到连接请求到来
+		a.sockConn  = accept(sockSrv, (SOCKADDR*)&a.addrClient, &a.len);//Accept client connection request, waiting for client connections
 		if (a.sockConn == INVALID_SOCKET) {
 			cout << "accept error! report error:" << WSAGetLastError() << endl;
 			continue;
 		}
-		cout << "reveived a conn::"<<"   ip:" << inet_ntoa(a.addrClient.sin_addr) << "   port:"<<a.addrClient.sin_port << endl;
+		// Explicitly set current room to "public" for new connections
+		strcpy_s(a.currentRoom, "public");
+		cout << "received a connection: "<<"   ip:" << inet_ntoa(a.addrClient.sin_addr) << "   port:"<<a.addrClient.sin_port << endl;
 		node* newnode=new node(a);
 		connlist->add(newnode);
 		 num++;
-		//接收成功得到通讯的sockConn
-		sprintf_s(sendBuf, "欢迎 %d 进入当前%d人聊天室", a.sockConn, num);
+		//Successfully received the communication socket
+		sprintf_s(sendBuf, "Welcome %d! Current number of clients: %d", a.sockConn, num);
 		node* p = connlist->first;
 		if (num > 0) {
 			if (num == 1) {
@@ -212,7 +276,7 @@ int main() {
 					cout << "send to client error!report error:" << WSAGetLastError() << endl;
 				}
 				else {
-					cout << "服务器发送欢迎信息" << sendBuf << endl;
+					cout << "Sent welcome message to client:" << sendBuf << endl;
 				}
 			}
 			else {
@@ -221,7 +285,7 @@ int main() {
 						cout << "send to client error!report error:" << WSAGetLastError() << endl;
 					}
 					else {
-						cout << "服务器发送欢迎信息" << sendBuf << endl;
+						cout << "Sent welcome message to client:" << sendBuf << endl;
 					}
 					p = p->next;
 					if (p->next == connlist->first) {
@@ -229,7 +293,7 @@ int main() {
 							cout << "send to client error!report error:" << WSAGetLastError() << endl;
 						}
 						else {
-							cout << "服务器发送欢迎信息" << sendBuf << endl;
+							cout << "Sent welcome message to client:" << sendBuf << endl;
 						}
 					}
 

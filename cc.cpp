@@ -3,6 +3,7 @@ using namespace std;
 #include<winsock.h>
 #include<string>
 #include<thread>
+#include<cctype>
 #pragma comment(lib,"ws2_32.lib")
 
 class client {
@@ -11,11 +12,21 @@ public:
 	SOCKET c;
 	char recvBuf[1000] = { '\0' };
 	char sendBuf[1000] = { '\0' };
+	char currentRoom[7] = "public"; // "public" for public room, 4-digit string for private room
+	bool inMenu = false;
+	
+	void showMenu() {
+		cout << "\n=== Menu ===" << endl;
+		cout << "1. Back into public room" << endl;
+		cout << "2. Create private room" << endl;
+		cout << "3. Exit" << endl;
+		cout << "Please enter your choice: ";
+	}
 	client(char* name) {
 		WORD wVersionRequested = MAKEWORD(2, 2);
 		WSADATA wsaData;
 
-		WSAStartup(wVersionRequested, &wsaData);//³õÊ¼»¯Socket DLL£¬Ð­ÉÌÊ¹ÓÃµÄSocket°æ±¾
+		WSAStartup(wVersionRequested, &wsaData);//ï¿½ï¿½Ê¼ï¿½ï¿½Socket DLLï¿½ï¿½Ð­ï¿½ï¿½Ê¹ï¿½Ãµï¿½Socketï¿½æ±¾
 
 		c = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 		strcpy_s(this->name, name);
@@ -35,12 +46,12 @@ public:
 			}
 			flush(recvBuf);
 			if (recv(c, recvBuf, 255, 0) == SOCKET_ERROR) {
-				cout << name << "recv error:" << WSAGetLastError() << endl;
+				cout << name << " recv error:" << WSAGetLastError() << endl;
 				return;
 			}
 			else if (strlen(recvBuf) != 0) {
-				//½ÓÊÕµ½µÄÊý¾Ý
-				cout << "¡¶" << recvBuf << "¡·" << endl;
+				//Received message
+			cout << recvBuf << endl;
 				flush(recvBuf);
 			}
 			flush(recvBuf);
@@ -50,8 +61,13 @@ public:
 	void sendData() {
 		int ret = 0;
 		do {
-
-			cout << "ÇëÊäÈë·¢ËÍÏûÏ¢£º" << endl;
+			if (inMenu) {
+				showMenu();
+				inMenu = false;
+			}
+			else {
+				cout << "Please enter the message to send (enter 'h' for menu):" << endl;
+			}
 			cin.getline(sendBuf, 255);
 			cin.clear();
 			cin.sync();
@@ -59,15 +75,66 @@ public:
 			if (strcmp(sendBuf, "q") == 0) {
 				return;
 			}
+			else if (strcmp(sendBuf, "h") == 0) {
+				inMenu = true;
+				continue;
+			}
+			else if (strcmp(sendBuf, "1") == 0) {
+				// Back to public room
+				strcpy_s(currentRoom, "public");
+				cout << "You are now in the public room" << endl;
+				sprintf_s(a, "/join public");
+				ret = send(c, a, 255, 0);
+				continue;
+			}
+			else if (strcmp(sendBuf, "2") == 0) {
+				// Create private room
+				cout << "Please enter a 4-digit room number: ";
+				char roomNumber[5];
+				cin.getline(roomNumber, 5);
+				cin.clear();
+				cin.sync();
+				
+				if (strlen(roomNumber) != 4) {
+					cout << "Room number must be 4 digits" << endl;
+					inMenu = true; // Show menu again
+					continue;
+				}
+				
+				// Check if all characters are digits
+				bool isValid = true;
+				for (int i = 0; i < 4; i++) {
+					if (!isdigit(roomNumber[i])) {
+						isValid = false;
+						break;
+					}
+				}
+				
+				if (!isValid) {
+					cout << "Room number must contain only digits" << endl;
+					inMenu = true; // Show menu again
+					continue;
+				}
+				
+				// Send create room request to server
+				sprintf_s(a, "/create %s", roomNumber);
+				ret = send(c, a, 255, 0);
+				strcpy_s(currentRoom, roomNumber);
+				continue;
+			}
+			else if (strcmp(sendBuf, "3") == 0) {
+				// Exit
+				return;
+			}
 			else if (strcmp(sendBuf, "") == 0) {
-				cout << "²»ÄÜ·¢ËÍ¿Õ×Ö·û" << endl;
+				cout << "Cannot send empty message" << endl;
 				continue;
 			}
 			//strcpy_s(a,(const char*)name);
-			sprintf_s(a, "%sËµ£º%s", name, sendBuf);
+			sprintf_s(a, "%s: %s", name, sendBuf);
 			ret = send(c, a, 255, 0);
 
-		}//ÏòÔ¶³Ìsocket·¢ËÍÊý¾Ý
+		}//Loop until socket communication ends
 		while (ret != SOCKET_ERROR && ret != 0);
 		return;
 	}
@@ -82,37 +149,37 @@ int main() {
 	int port;
 	char name[100];
 	char ipaddr[30];
-	cout << "ÇëÊäÈëêÇ³Æ" << endl;
+	cout << "Please enter your name" << endl;
 	cin >> name;
 	cin.ignore(1024, '\n');
-	cout << "ÇëÊäÈëÁ¬½ÓµÄ·þÎñÆ÷ipµØÖ·£º" << endl;
+	cout << "Please enter the server IP address:" << endl;
 	cin >> ipaddr;
 	
 	cin.ignore(1024, '\n');
-	cout << "ÇëÊäÈë·þÎñÆ÷¶Ë¿ÚºÅ:" << endl;
+	cout << "Please enter the server port:" << endl;
 	cin >> port;
 	cin.ignore(1024, '\n');
-	cout << "ÒªÁ¬½ÓµÄ·þÎñÆ÷ip£º" << " " << ipaddr<<"    ¶Ë¿ÚºÅ£º"<<port<<endl;
+	cout << "Connecting to server IP: " << " " << ipaddr<<"    Port:"<<port<<endl;
 	client c1(name);
 
 	SOCKADDR_IN addrClient;
-	memset(&addrClient, 0, sizeof(addrClient));//ÓÃ0Ìî³ä
+	memset(&addrClient, 0, sizeof(addrClient));//ï¿½ï¿½0ï¿½ï¿½ï¿½
 	addrClient.sin_family = AF_INET;//IPv4
-	addrClient.sin_addr.S_un.S_addr = inet_addr(ipaddr);//¾ßÌåIPµØÖ·
-	addrClient.sin_port = htons(port);//¶Ë¿ÚºÅ
+	addrClient.sin_addr.S_un.S_addr = inet_addr(ipaddr);//ï¿½ï¿½ï¿½ï¿½IPï¿½ï¿½Ö·
+	addrClient.sin_port = htons(port);//ï¿½Ë¿Úºï¿½
 	if (connect(c1.c, (SOCKADDR*)&addrClient, sizeof(SOCKADDR)) == SOCKET_ERROR) {
-		cout << "client conn error,report error:" << WSAGetLastError() << endl;
-		cout << "ÓëÄ¿±ê·þÎñÆ÷Á¬½ÓÊ§°Ü£¬½«ÍË³ö";
-	}//ÏòÒ»¸öÌØ¶¨µÄSocket·¢³ö½¨Á¬ÇëÇó£¨£¬°üÀ¨IPºÍPort£¬£©
+		cout << "Client connection error, error code:" << WSAGetLastError() << endl;
+		cout << "Failed to connect to the target server, exiting...";
+	}
 	else {
 		SOCKADDR_IN myaddr;
 		int len = sizeof(myaddr);
 		getsockname(c1.c,(sockaddr*)&myaddr,&len);
-		cout<<"±¾µØip£º"<<inet_ntoa(myaddr.sin_addr)<<"   ±¾µØport:"<<ntohs(myaddr.sin_port)<<endl << "connect sever succeed£¡£¡input q to exit" << endl;
+		cout<<"My IP: "<<inet_ntoa(myaddr.sin_addr)<<"   My Port:"<<ntohs(myaddr.sin_port)<<endl << "Connect server succeed. Input q to exit" << endl;
 		thread h1(&client::recvData, c1);
 		h1.detach();
 		c1.sendData();
-		closesocket(c1.c);//¹Ø±ÕÒ»¸ö´æÔÚµÄsocket
+		closesocket(c1.c);
 		WSACleanup();
 	}
 }
