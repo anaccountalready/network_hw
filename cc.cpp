@@ -11,18 +11,20 @@ public:
 	SOCKET c;
 	char recvBuf[1000] = { '\0' };
 	char sendBuf[1000] = { '\0' };
+	bool nameSent;
 	client(char* name) {
 		WORD wVersionRequested = MAKEWORD(2, 2);
 		WSADATA wsaData;
 
-		WSAStartup(wVersionRequested, &wsaData);//³õÊ¼»¯Socket DLL£¬Ð­ÉÌÊ¹ÓÃµÄSocket°æ±¾
+		WSAStartup(wVersionRequested, &wsaData);
 
 		c = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 		strcpy_s(this->name, name);
-
+		nameSent = false;
 	}
 	client(SOCKET c) {
 		this->c = c;
+		nameSent = false;
 	}
 	void flush(char* a) {
 		memset(a, 0, sizeof(a));
@@ -39,36 +41,122 @@ public:
 				return;
 			}
 			else if (strlen(recvBuf) != 0) {
-				//½ÓÊÕµ½µÄÊý¾Ý
-				cout << "¡¶" << recvBuf << "¡·" << endl;
+				cout << recvBuf << endl;
 				flush(recvBuf);
 			}
 			flush(recvBuf);
-
 		}
 	}
+	
+	void showMenu() {
+		cout << "\n========== èŠå¤©å®¤èœå• ==========" << endl;
+		cout << "1. åˆ›å»ºç§æœ‰èŠå¤©å®¤" << endl;
+		cout << "2. åŠ å…¥ç§æœ‰èŠå¤©å®¤" << endl;
+		cout << "3. ç¦»å¼€ç§æœ‰èŠå¤©å®¤" << endl;
+		cout << "4. æŸ¥çœ‹æ‰€æœ‰ç§æœ‰èŠå¤©å®¤" << endl;
+		cout << "5. æ˜¾ç¤ºå¸®åŠ©ä¿¡æ¯" << endl;
+		cout << "6. å‘é€æ¶ˆæ¯" << endl;
+		cout << "7. é€€å‡ºèŠå¤©å®¤" << endl;
+		cout << "================================\n" << endl;
+		cout << "è¯·é€‰æ‹©æ“ä½œ (1-7): ";
+	}
+	
+	void handleMenuChoice(int choice) {
+		switch (choice) {
+			case 1: {
+				strcpy_s(sendBuf, "/create");
+				int ret = send(c, sendBuf, 255, 0);
+				if (ret == SOCKET_ERROR || ret == 0) {
+					cout << "å‘é€å‘½ä»¤å¤±è´¥" << endl;
+				}
+				break;
+			}
+			case 2: {
+				char roomId[10];
+				cout << "è¯·è¾“å…¥4ä½æˆ¿é—´å·: ";
+				cin >> roomId;
+				cin.ignore(1024, '\n');
+				sprintf_s(sendBuf, "/join %s", roomId);
+				int ret = send(c, sendBuf, 255, 0);
+				if (ret == SOCKET_ERROR || ret == 0) {
+					cout << "å‘é€å‘½ä»¤å¤±è´¥" << endl;
+				}
+				break;
+			}
+			case 3: {
+				strcpy_s(sendBuf, "/leave");
+				int ret = send(c, sendBuf, 255, 0);
+				if (ret == SOCKET_ERROR || ret == 0) {
+					cout << "å‘é€å‘½ä»¤å¤±è´¥" << endl;
+				}
+				break;
+			}
+			case 4: {
+				strcpy_s(sendBuf, "/list");
+				int ret = send(c, sendBuf, 255, 0);
+				if (ret == SOCKET_ERROR || ret == 0) {
+					cout << "å‘é€å‘½ä»¤å¤±è´¥" << endl;
+				}
+				break;
+			}
+			case 5: {
+				strcpy_s(sendBuf, "/help");
+				int ret = send(c, sendBuf, 255, 0);
+				if (ret == SOCKET_ERROR || ret == 0) {
+					cout << "å‘é€å‘½ä»¤å¤±è´¥" << endl;
+				}
+				break;
+			}
+			case 6: {
+				cout << "è¯·è¾“å…¥æ¶ˆæ¯å†…å®¹: ";
+				cin.getline(sendBuf, 255);
+				cin.clear();
+				cin.sync();
+				if (strcmp(sendBuf, "") == 0) {
+					cout << "ä¸èƒ½å‘é€ç©ºæ¶ˆæ¯" << endl;
+					return;
+				}
+				int ret = send(c, sendBuf, 255, 0);
+				if (ret == SOCKET_ERROR || ret == 0) {
+					cout << "å‘é€æ¶ˆæ¯å¤±è´¥" << endl;
+				}
+				break;
+			}
+			case 7: {
+				strcpy_s(sendBuf, "q");
+				cout << "æ­£åœ¨é€€å‡ºèŠå¤©å®¤..." << endl;
+				break;
+			}
+			default: {
+				cout << "æ— æ•ˆçš„é€‰æ‹©ï¼Œè¯·é‡æ–°è¾“å…¥" << endl;
+				break;
+			}
+		}
+	}
+
 	void sendData() {
 		int ret = 0;
+		
+		ret = send(c, name, 255, 0);
+		if (ret == SOCKET_ERROR || ret == 0) {
+			cout << "å‘é€ç”¨æˆ·åå¤±è´¥" << endl;
+			return;
+		}
+		nameSent = true;
+		
 		do {
-
-			cout << "ÇëÊäÈë·¢ËÍÏûÏ¢£º" << endl;
-			cin.getline(sendBuf, 255);
-			cin.clear();
-			cin.sync();
-			char a[255];
+			showMenu();
+			int choice;
+			cin >> choice;
+			cin.ignore(1024, '\n');
+			
+			handleMenuChoice(choice);
+			
 			if (strcmp(sendBuf, "q") == 0) {
 				return;
 			}
-			else if (strcmp(sendBuf, "") == 0) {
-				cout << "²»ÄÜ·¢ËÍ¿Õ×Ö·û" << endl;
-				continue;
-			}
-			//strcpy_s(a,(const char*)name);
-			sprintf_s(a, "%sËµ£º%s", name, sendBuf);
-			ret = send(c, a, 255, 0);
-
-		}//ÏòÔ¶³Ìsocket·¢ËÍÊý¾Ý
-		while (ret != SOCKET_ERROR && ret != 0);
+			
+		} while (ret != SOCKET_ERROR && ret != 0);
 		return;
 	}
 	~client() {}
@@ -82,37 +170,37 @@ int main() {
 	int port;
 	char name[100];
 	char ipaddr[30];
-	cout << "ÇëÊäÈëêÇ³Æ" << endl;
+	cout << "è¯·è¾“å…¥æ˜µç§°" << endl;
 	cin >> name;
 	cin.ignore(1024, '\n');
-	cout << "ÇëÊäÈëÁ¬½ÓµÄ·þÎñÆ÷ipµØÖ·£º" << endl;
+	cout << "è¯·è¾“å…¥è¦è¿žæŽ¥çš„æœåŠ¡å™¨ipåœ°å€ï¼š" << endl;
 	cin >> ipaddr;
 	
 	cin.ignore(1024, '\n');
-	cout << "ÇëÊäÈë·þÎñÆ÷¶Ë¿ÚºÅ:" << endl;
+	cout << "è¯·è¾“å…¥æœåŠ¡å™¨ç«¯å£å·:" << endl;
 	cin >> port;
 	cin.ignore(1024, '\n');
-	cout << "ÒªÁ¬½ÓµÄ·þÎñÆ÷ip£º" << " " << ipaddr<<"    ¶Ë¿ÚºÅ£º"<<port<<endl;
+	cout << "è¦è¿žæŽ¥çš„æœåŠ¡å™¨ipæ˜¯" << " " << ipaddr<<"    ç«¯å£å·ï¼š"<<port<<endl;
 	client c1(name);
 
 	SOCKADDR_IN addrClient;
-	memset(&addrClient, 0, sizeof(addrClient));//ÓÃ0Ìî³ä
-	addrClient.sin_family = AF_INET;//IPv4
-	addrClient.sin_addr.S_un.S_addr = inet_addr(ipaddr);//¾ßÌåIPµØÖ·
-	addrClient.sin_port = htons(port);//¶Ë¿ÚºÅ
+	memset(&addrClient, 0, sizeof(addrClient));
+	addrClient.sin_family = AF_INET;
+	addrClient.sin_addr.S_un.S_addr = inet_addr(ipaddr);
+	addrClient.sin_port = htons(port);
 	if (connect(c1.c, (SOCKADDR*)&addrClient, sizeof(SOCKADDR)) == SOCKET_ERROR) {
 		cout << "client conn error,report error:" << WSAGetLastError() << endl;
-		cout << "ÓëÄ¿±ê·þÎñÆ÷Á¬½ÓÊ§°Ü£¬½«ÍË³ö";
-	}//ÏòÒ»¸öÌØ¶¨µÄSocket·¢³ö½¨Á¬ÇëÇó£¨£¬°üÀ¨IPºÍPort£¬£©
+		cout << "è¿žæŽ¥æœåŠ¡å™¨å¤±è´¥ï¼Œè¯·é€€å‡º";
+	}
 	else {
 		SOCKADDR_IN myaddr;
 		int len = sizeof(myaddr);
 		getsockname(c1.c,(sockaddr*)&myaddr,&len);
-		cout<<"±¾µØip£º"<<inet_ntoa(myaddr.sin_addr)<<"   ±¾µØport:"<<ntohs(myaddr.sin_port)<<endl << "connect sever succeed£¡£¡input q to exit" << endl;
+		cout<<"æœ¬åœ°ipï¼š"<<inet_ntoa(myaddr.sin_addr)<<"   æœ¬åœ°port:"<<ntohs(myaddr.sin_port)<<endl << "connect sever succeedï¼Œè¾“å…¥ q to exit" << endl;
 		thread h1(&client::recvData, c1);
 		h1.detach();
 		c1.sendData();
-		closesocket(c1.c);//¹Ø±ÕÒ»¸ö´æÔÚµÄsocket
+		closesocket(c1.c);
 		WSACleanup();
 	}
 }

@@ -2,21 +2,27 @@
 #include<winsock.h>
 #include<string>
 #include<thread>
+#include<map>
+#include<set>
+#include<sstream>
 
 #pragma comment(lib,"ws2_32.lib")
 
 char recvBuf[255] = { "\0" };
 char sendBuf[255] = { "\0" };
 using namespace std;
+
 typedef struct conn {
 	SOCKADDR_IN addrClient;
 	SOCKET sockConn;
 	int len = sizeof(addrClient);
+	string name;
+	string currentRoom;
 }CON;
+
 class node{
 public:
 	node* next;
-
 	CON cc;
 	node() {
 		next = NULL;
@@ -26,7 +32,9 @@ public:
 		next = NULL;
 	}
 };
-static int num = 0;//µ±Ç°½ÓÊÜµÄsocketÊıÄ¿
+
+static int num = 0;
+
 class list {
 public:
 	node* first;
@@ -49,13 +57,11 @@ public:
 		}
 		p->next = newnode;
 		newnode->next = first;
-
 	}
 	void del(node*q) {
 		node* p = first;
 		if (p==q) {
 			if (p->next != first) {
-
 				node* y = first;
 				while (y->next != first) {
 					y = y->next;
@@ -64,8 +70,6 @@ public:
 				first = y->next;
 				delete q;
 				q = NULL;
-
-
 			}
 			else {
 				first = NULL;
@@ -80,121 +84,288 @@ public:
 			q = NULL;
 		}
 	}
-
+	node* findBySocket(SOCKET sock) {
+		if (isempty()) return NULL;
+		node* p = first;
+		do {
+			if (p->cc.sockConn == sock) {
+				return p;
+			}
+			p = p->next;
+		} while (p != first);
+		return NULL;
+	}
 };
+
+class PrivateRoom {
+public:
+	string roomId;
+	set<SOCKET> members;
+	PrivateRoom() {}
+	PrivateRoom(string id) : roomId(id) {}
+};
+
+map<string, PrivateRoom> privateRooms;
+map<SOCKET, string> socketToName;
+
 void flush(char* a) {
 	memset(a, 0, sizeof(a));
 }
-//Ïß³Ì´¦Àíº¯Êı
+
+string generateRoomId() {
+	srand(time(0));
+	string id;
+	do {
+		id = "";
+		for (int i = 0; i < 4; i++) {
+			id += (char)('0' + rand() % 10);
+		}
+	} while (privateRooms.find(id) != privateRooms.end());
+	return id;
+}
+
+void sendToClient(SOCKET sock, const string& msg) {
+	send(sock, msg.c_str(), 255, 0);
+}
+
+void broadcastToRoom(list* cl, const string& roomId, const string& msg, SOCKET excludeSock = INVALID_SOCKET) {
+	if (roomId == "public") {
+		if (cl->isempty()) return;
+		node* p = cl->first;
+		do {
+			if (p->cc.currentRoom == "public" && p->cc.sockConn != excludeSock) {
+				sendToClient(p->cc.sockConn, msg);
+			}
+			p = p->next;
+		} while (p != cl->first);
+	}
+	else {
+		if (privateRooms.find(roomId) == privateRooms.end()) return;
+		PrivateRoom& room = privateRooms[roomId];
+		for (SOCKET sock : room.members) {
+			if (sock != excludeSock) {
+				sendToClient(sock, msg);
+			}
+		}
+	}
+}
+
+void handleCommand(list* cl, node* sender, const string& cmd) {
+	stringstream ss(cmd);
+	string command;
+	ss >> command;
+	
+	if (command == "/create") {
+		string roomId = generateRoomId();
+		PrivateRoom newRoom(roomId);
+		newRoom.members.insert(sender->cc.sockConn);
+		privateRooms[roomId] = newRoom;
+		
+		if (sender->cc.currentRoom != "public") {
+			privateRooms[sender->cc.currentRoom].members.erase(sender->cc.sockConn);
+			if (privateRooms[sender->cc.currentRoom].members.empty()) {
+				privateRooms.erase(sender->cc.currentRoom);
+			}
+		}
+		sender->cc.currentRoom = roomId;
+		
+		string response = "[ç³»ç»Ÿ] ç§æœ‰èŠå¤©å®¤åˆ›å»ºæˆåŠŸï¼æˆ¿é—´å·ï¼š" + roomId;
+		sendToClient(sender->cc.sockConn, response);
+		cout << "ç”¨æˆ· " << sender->cc.name << " åˆ›å»ºäº†ç§æœ‰èŠå¤©å®¤ " << roomId << endl;
+	}
+	else if (command == "/join") {
+		string roomId;
+		ss >> roomId;
+		
+		if (roomId.length() != 4) {
+			sendToClient(sender->cc.sockConn, "[ç³»ç»Ÿ] æˆ¿é—´å·å¿…é¡»æ˜¯4ä½æ•°å­—ï¼");
+			return;
+		}
+		
+		if (privateRooms.find(roomId) == privateRooms.end()) {
+			sendToClient(sender->cc.sockConn, "[ç³»ç»Ÿ] æˆ¿é—´ä¸å­˜åœ¨ï¼");
+			return;
+		}
+		
+		if (sender->cc.currentRoom == roomId) {
+			sendToClient(sender->cc.sockConn, "[ç³»ç»Ÿ] æ‚¨å·²ç»åœ¨è¿™ä¸ªæˆ¿é—´äº†ï¼");
+			return;
+		}
+		
+		if (sender->cc.currentRoom != "public") {
+			string oldRoom = sender->cc.currentRoom;
+			privateRooms[oldRoom].members.erase(sender->cc.sockConn);
+			broadcastToRoom(cl, oldRoom, "[ç³»ç»Ÿ] " + sender->cc.name + " ç¦»å¼€äº†æˆ¿é—´");
+			if (privateRooms[oldRoom].members.empty()) {
+				privateRooms.erase(oldRoom);
+			}
+		}
+		else {
+			broadcastToRoom(cl, "public", "[ç³»ç»Ÿ] " + sender->cc.name + " ç¦»å¼€äº†å…¬å…±èŠå¤©å®¤");
+		}
+		
+		sender->cc.currentRoom = roomId;
+		privateRooms[roomId].members.insert(sender->cc.sockConn);
+		
+		broadcastToRoom(cl, roomId, "[ç³»ç»Ÿ] " + sender->cc.name + " åŠ å…¥äº†æˆ¿é—´");
+		sendToClient(sender->cc.sockConn, "[ç³»ç»Ÿ] æˆåŠŸåŠ å…¥æˆ¿é—´ " + roomId);
+		cout << "ç”¨æˆ· " << sender->cc.name << " åŠ å…¥äº†ç§æœ‰èŠå¤©å®¤ " << roomId << endl;
+	}
+	else if (command == "/leave") {
+		if (sender->cc.currentRoom == "public") {
+			sendToClient(sender->cc.sockConn, "[ç³»ç»Ÿ] æ‚¨å½“å‰åœ¨å…¬å…±èŠå¤©å®¤ï¼Œæ— æ³•ç¦»å¼€ï¼");
+			return;
+		}
+		
+		string oldRoom = sender->cc.currentRoom;
+		privateRooms[oldRoom].members.erase(sender->cc.sockConn);
+		broadcastToRoom(cl, oldRoom, "[ç³»ç»Ÿ] " + sender->cc.name + " ç¦»å¼€äº†æˆ¿é—´");
+		
+		if (privateRooms[oldRoom].members.empty()) {
+			privateRooms.erase(oldRoom);
+			cout << "ç§æœ‰èŠå¤©å®¤ " << oldRoom << " å·²è§£æ•£" << endl;
+		}
+		
+		sender->cc.currentRoom = "public";
+		broadcastToRoom(cl, "public", "[ç³»ç»Ÿ] " + sender->cc.name + " å›åˆ°äº†å…¬å…±èŠå¤©å®¤");
+		sendToClient(sender->cc.sockConn, "[ç³»ç»Ÿ] æ‚¨å·²å›åˆ°å…¬å…±èŠå¤©å®¤");
+		cout << "ç”¨æˆ· " << sender->cc.name << " å›åˆ°äº†å…¬å…±èŠå¤©å®¤" << endl;
+	}
+	else if (command == "/list") {
+		string response = "[ç³»ç»Ÿ] å½“å‰ç§æœ‰èŠå¤©å®¤åˆ—è¡¨ï¼š\n";
+		if (privateRooms.empty()) {
+			response += "  æš‚æ— ç§æœ‰èŠå¤©å®¤\n";
+		}
+		else {
+			for (auto& pair : privateRooms) {
+				response += "  æˆ¿é—´å·: " + pair.first + " (äººæ•°: " + to_string(pair.second.members.size()) + ")\n";
+			}
+		}
+		sendToClient(sender->cc.sockConn, response);
+	}
+	else if (command == "/help") {
+		string help = "[ç³»ç»Ÿ] å¯ç”¨å‘½ä»¤ï¼š\n";
+		help += "  /create - åˆ›å»ºç§æœ‰èŠå¤©å®¤\n";
+		help += "  /join <æˆ¿é—´å·> - åŠ å…¥ç§æœ‰èŠå¤©å®¤\n";
+		help += "  /leave - ç¦»å¼€ç§æœ‰èŠå¤©å®¤ï¼Œå›åˆ°å…¬å…±èŠå¤©å®¤\n";
+		help += "  /list - æŸ¥çœ‹æ‰€æœ‰ç§æœ‰èŠå¤©å®¤\n";
+		help += "  /help - æ˜¾ç¤ºå¸®åŠ©ä¿¡æ¯\n";
+		help += "  /menu - æ˜¾ç¤ºèœå•\n";
+		sendToClient(sender->cc.sockConn, help);
+	}
+	else if (command == "/menu") {
+		string menu = "\n========== èŠå¤©å®¤èœå• ==========\n";
+		menu += "å½“å‰ä½ç½®: " + (sender->cc.currentRoom == "public" ? "å…¬å…±èŠå¤©å®¤" : "ç§æœ‰èŠå¤©å®¤ " + sender->cc.currentRoom) + "\n";
+		menu += "1. åˆ›å»ºç§æœ‰èŠå¤©å®¤ (/create)\n";
+		menu += "2. åŠ å…¥ç§æœ‰èŠå¤©å®¤ (/join <æˆ¿é—´å·>)\n";
+		menu += "3. ç¦»å¼€ç§æœ‰èŠå¤©å®¤ (/leave)\n";
+		menu += "4. æŸ¥çœ‹æ‰€æœ‰ç§æœ‰èŠå¤©å®¤ (/list)\n";
+		menu += "5. æ˜¾ç¤ºå¸®åŠ©ä¿¡æ¯ (/help)\n";
+		menu += "6. é€€å‡ºèŠå¤©å®¤ (q)\n";
+		menu += "================================\n";
+		sendToClient(sender->cc.sockConn, menu);
+	}
+	else {
+		sendToClient(sender->cc.sockConn, "[ç³»ç»Ÿ] æœªçŸ¥å‘½ä»¤ï¼Œè¾“å…¥ /help æŸ¥çœ‹å¸®åŠ©");
+	}
+}
+
 void hthreadfun(list*cl,node* newnode) {
-	//½ÓÊÕ²¢·¢ËÍÀ´×Ô¸ÃÏß³Ì¼àÌıµÄĞÅÏ¢
 	while (1) {
 		flush(recvBuf);
 		if (recv((newnode->cc).sockConn, recvBuf, 255, 0) == SOCKET_ERROR) {
 			if (WSAGetLastError() == 10054) {
-				sprintf_s(recvBuf, "%dÒÑÍË³öÁÄÌìÊÒ", (newnode->cc).sockConn);
+				string name = newnode->cc.name.empty() ? to_string((newnode->cc).sockConn) : newnode->cc.name;
+				sprintf_s(recvBuf, "%s ç¦»å¼€äº†èŠå¤©å®¤", name.c_str());
 				num--;
-				cout << "µ±Ç°ÈËÊı" << num << endl;
-				cl->del(newnode);
-				closesocket((newnode->cc).sockConn);//¹Ø±Õsocket
-				if (num != 0) {
-					node* p = cl->first;
-					if (num == 1) {
-						send((p->cc).sockConn, recvBuf, 255, 0);
-						cout << "·şÎñÆ÷Ïò" << (p->cc).sockConn << "×ª·¢ĞÅÏ¢:" << recvBuf << endl;
-					}
-					else
-					while (p->next!=cl->first) {
-							send((p->cc).sockConn, recvBuf, 255, 0);
-							cout << "·şÎñÆ÷Ïò" << (p->cc).sockConn << "×ª·¢ĞÅÏ¢:" << recvBuf << endl;
-							p = p->next;
-							if (p->next == cl->first) {
-								send((p->cc).sockConn, recvBuf, 255, 0);
-								cout << "·şÎñÆ÷Ïò" << (p->cc).sockConn << "×ª·¢ĞÅÏ¢:" << recvBuf << endl;
-							}
+				cout << "å½“å‰äººæ•° " << num << endl;
+				
+				if (newnode->cc.currentRoom != "public") {
+					string oldRoom = newnode->cc.currentRoom;
+					if (privateRooms.find(oldRoom) != privateRooms.end()) {
+						privateRooms[oldRoom].members.erase(newnode->cc.sockConn);
+						broadcastToRoom(cl, oldRoom, "[ç³»ç»Ÿ] " + name + " ç¦»å¼€äº†æˆ¿é—´");
+						if (privateRooms[oldRoom].members.empty()) {
+							privateRooms.erase(oldRoom);
 						}
-
+					}
 				}
-
-			
+				else {
+					broadcastToRoom(cl, "public", string(recvBuf));
+				}
+				
+				cl->del(newnode);
+				closesocket((newnode->cc).sockConn);
 			}
 			else cout << "recv error:" << WSAGetLastError() << endl;
 			return;
 		}
 		else if (strlen(recvBuf) != 0) {
-			cout << "·şÎñÆ÷½ÓÊÕµ½" <<(newnode->cc).sockConn << "µÄĞÅÏ¢:" << recvBuf << endl;
-			if (num > 1) {
-				node* p = cl->first;
-				while (p->next != cl->first) {
-					if (p != newnode) {
-						send((p->cc).sockConn, recvBuf, 255, 0);
-						cout << "·şÎñÆ÷Ïò" << (p->cc).sockConn << "×ª·¢ĞÅÏ¢:" << recvBuf << endl;
-						p = p->next;
-					}
-					else if (p == newnode) {
-						p = p->next;
-					}
-					if (p->next == cl->first&&p!=newnode)
-					{
-						send((p->cc).sockConn, recvBuf, 255, 0);
-						cout << "·şÎñÆ÷Ïò" << (p->cc).sockConn << "×ª·¢ĞÅÏ¢:" << recvBuf << endl;
-					}
-					
-				}
+			string msg = recvBuf;
+			cout << "æœåŠ¡å™¨æ”¶åˆ°" << (newnode->cc).sockConn << "çš„æ¶ˆæ¯:" << recvBuf << endl;
+			
+			if (newnode->cc.name.empty()) {
+				newnode->cc.name = msg;
+				newnode->cc.currentRoom = "public";
+				socketToName[newnode->cc.sockConn] = msg;
+				
+				string welcome = "[ç³»ç»Ÿ] æ¬¢è¿ " + msg + " åŠ å…¥å…¬å…±èŠå¤©å®¤ï¼\n";
+				welcome += "[ç³»ç»Ÿ] è¾“å…¥ /menu æŸ¥çœ‹èœå•ï¼Œ/help æŸ¥çœ‹å¸®åŠ©\n";
+				sendToClient(newnode->cc.sockConn, welcome);
+				
+				broadcastToRoom(cl, "public", "[ç³»ç»Ÿ] " + msg + " åŠ å…¥äº†å…¬å…±èŠå¤©å®¤", newnode->cc.sockConn);
 			}
-
+			else if (msg[0] == '/') {
+				handleCommand(cl, newnode, msg);
+			}
+			else {
+				string fullMsg = "[" + (newnode->cc.currentRoom == "public" ? "å…¬å…±" : newnode->cc.currentRoom) + "] " + newnode->cc.name + " è¯´: " + msg;
+				broadcastToRoom(cl, newnode->cc.currentRoom, fullMsg, newnode->cc.sockConn);
+			}
 		}
-		else { }
-
 		flush(recvBuf);
-
 	}
 }
+
 int main() {
 	WSACleanup();
 	int port;
-	cout << "ÇëÊäÈë·şÎñÆ÷¶Ë¿ÚºÅ£º";
+	cout << "è¯·è¾“å…¥æœåŠ¡å™¨ç«¯å£å·ï¼š";
 	cin >> port;
 	WORD wVersionRequested = MAKEWORD(2, 2);
 	WSADATA wsaData;
 
 	if (WSAStartup(wVersionRequested, &wsaData) != 0) {
-
 		cout << "WSAStartup() failed" << endl;
 		return 0;
-	}//³õÊ¼»¯Socket DLL£¬Ğ­ÉÌÊ¹ÓÃµÄSocket°æ±¾
+	}
 
-	SOCKET sockSrv = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);//´´½¨Ò»¸öSocket£¬²¢°ó¶¨µ½Ò»¸öÌØ¶¨µÄ´«Êä²ã·şÎñ£¬Ğ­ÒéÎªTCP/IP
+	SOCKET sockSrv = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	if (sockSrv == INVALID_SOCKET) {
 		cout << " socket error!report error:" << WSAGetLastError() << endl;
 	}
 
-	//ÅäÖÃ¼àÌıµÄipµØÖ·ºÍ¶Ë¿Ú
 	SOCKADDR_IN addrSrv;
 	memset(&addrSrv, 0, sizeof(addrSrv));
-	addrSrv.sin_family = AF_INET;//IPv4
-	addrSrv.sin_addr.S_un.S_addr = inet_addr("0.0.0.0");//IPµØÖ·
-	addrSrv.sin_port = htons(port);//¶Ë¿ÚºÅ
-
+	addrSrv.sin_family = AF_INET;
+	addrSrv.sin_addr.S_un.S_addr = inet_addr("0.0.0.0");
+	addrSrv.sin_port = htons(port);
 
 	if (bind(sockSrv, (SOCKADDR*)&addrSrv, sizeof(SOCKADDR)) == SOCKET_ERROR) {
 		cout << "bind error,report error:" << WSAGetLastError() << endl;
-
-	}//½«µØÖ·°ó¶¨µ½Ö¸¶¨Socket
+	}
 	else { cout << "bind succeed!!" << endl; }
-
 
 	if (listen(sockSrv, 5) == SOCKET_ERROR) {
 		cout << "listen error!report error:" << WSAGetLastError() << endl;
 		return 1;
-
-	}//Ê¹Socket½øÈë¼àÌı×´Ì¬£¬¼àÌıÔ¶³ÌÁ¬½ÓÊÇ·ñµ½À´
+	}
 	else { cout << "listening....." << endl; }
 
 	list *connlist=new list();
 	while (1) {
 		CON a;
-		a.sockConn  = accept(sockSrv, (SOCKADDR*)&a.addrClient, &a.len);//½ÓÊÜÌØ¶¨socketÇëÇóµÈ´ı¶ÓÁĞÖĞµÄÁ¬½ÓÇëÇó//Í¨³£ÔËĞĞºó×èÈû£¬Ö±µ½Á¬½ÓÇëÇóµ½À´
+		a.sockConn  = accept(sockSrv, (SOCKADDR*)&a.addrClient, &a.len);
 		if (a.sockConn == INVALID_SOCKET) {
 			cout << "accept error! report error:" << WSAGetLastError() << endl;
 			continue;
@@ -202,9 +373,9 @@ int main() {
 		cout << "reveived a conn::"<<"   ip:" << inet_ntoa(a.addrClient.sin_addr) << "   port:"<<a.addrClient.sin_port << endl;
 		node* newnode=new node(a);
 		connlist->add(newnode);
-		 num++;
-		//½ÓÊÕ³É¹¦µÃµ½Í¨Ñ¶µÄsockConn
-		sprintf_s(sendBuf, "»¶Ó­ %d ½øÈëµ±Ç°%dÈËÁÄÌìÊÒ", a.sockConn, num);
+		num++;
+		
+		sprintf_s(sendBuf, "æ¬¢è¿ %d åŠ å…¥ï¼Œå½“å‰%däººåœ¨çº¿", a.sockConn, num);
 		node* p = connlist->first;
 		if (num > 0) {
 			if (num == 1) {
@@ -212,7 +383,7 @@ int main() {
 					cout << "send to client error!report error:" << WSAGetLastError() << endl;
 				}
 				else {
-					cout << "·şÎñÆ÷·¢ËÍ»¶Ó­ĞÅÏ¢" << sendBuf << endl;
+					cout << "æœåŠ¡å™¨å‘é€æ¬¢è¿æ¶ˆæ¯" << sendBuf << endl;
 				}
 			}
 			else {
@@ -221,7 +392,7 @@ int main() {
 						cout << "send to client error!report error:" << WSAGetLastError() << endl;
 					}
 					else {
-						cout << "·şÎñÆ÷·¢ËÍ»¶Ó­ĞÅÏ¢" << sendBuf << endl;
+						cout << "æœåŠ¡å™¨å‘é€æ¬¢è¿æ¶ˆæ¯" << sendBuf << endl;
 					}
 					p = p->next;
 					if (p->next == connlist->first) {
@@ -229,10 +400,9 @@ int main() {
 							cout << "send to client error!report error:" << WSAGetLastError() << endl;
 						}
 						else {
-							cout << "·şÎñÆ÷·¢ËÍ»¶Ó­ĞÅÏ¢" << sendBuf << endl;
+							cout << "æœåŠ¡å™¨å‘é€æ¬¢è¿æ¶ˆæ¯" << sendBuf << endl;
 						}
 					}
-
 				}
 			}
 		}
