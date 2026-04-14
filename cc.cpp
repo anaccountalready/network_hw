@@ -12,6 +12,7 @@ public:
 	char recvBuf[1000] = { '\0' };
 	char sendBuf[1000] = { '\0' };
 	bool nameSent;
+	bool running;
 	client(char* name) {
 		WORD wVersionRequested = MAKEWORD(2, 2);
 		WSADATA wsaData;
@@ -21,23 +22,29 @@ public:
 		c = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 		strcpy_s(this->name, name);
 		nameSent = false;
+		running = true;
 	}
 	client(SOCKET c) {
 		this->c = c;
 		nameSent = false;
+		running = true;
 	}
 	void flush(char* a) {
 		memset(a, 0, sizeof(a));
 	}
 
 	void recvData() {
-		while (1) {
-			if (strcmp(sendBuf, "q") == 0) {
+		while (running) {
+			flush(recvBuf);
+			int ret = recv(c, recvBuf, 255, 0);
+			if (ret == SOCKET_ERROR) {
+				cout << name << " recv error:" << WSAGetLastError() << endl;
+				running = false;
 				return;
 			}
-			flush(recvBuf);
-			if (recv(c, recvBuf, 255, 0) == SOCKET_ERROR) {
-				cout << name << "recv error:" << WSAGetLastError() << endl;
+			else if (ret == 0) {
+				cout << "服务器已断开连接" << endl;
+				running = false;
 				return;
 			}
 			else if (strlen(recvBuf) != 0) {
@@ -61,13 +68,36 @@ public:
 		cout << "请选择操作 (1-7): ";
 	}
 	
+	int getMenuChoice() {
+		int choice;
+		while (true) {
+			showMenu();
+			if (cin >> choice) {
+				cin.ignore(1024, '\n');
+				if (choice >= 1 && choice <= 7) {
+					return choice;
+				}
+				else {
+					cout << "无效的选择，请输入1-7之间的数字" << endl;
+				}
+			}
+			else {
+				cout << "输入无效，请输入数字" << endl;
+				cin.clear();
+				cin.ignore(1024, '\n');
+			}
+		}
+	}
+	
 	void handleMenuChoice(int choice) {
+		int ret = 0;
 		switch (choice) {
 			case 1: {
 				strcpy_s(sendBuf, "/create");
-				int ret = send(c, sendBuf, 255, 0);
+				ret = send(c, sendBuf, 255, 0);
 				if (ret == SOCKET_ERROR || ret == 0) {
 					cout << "发送命令失败" << endl;
+					running = false;
 				}
 				break;
 			}
@@ -77,33 +107,37 @@ public:
 				cin >> roomId;
 				cin.ignore(1024, '\n');
 				sprintf_s(sendBuf, "/join %s", roomId);
-				int ret = send(c, sendBuf, 255, 0);
+				ret = send(c, sendBuf, 255, 0);
 				if (ret == SOCKET_ERROR || ret == 0) {
 					cout << "发送命令失败" << endl;
+					running = false;
 				}
 				break;
 			}
 			case 3: {
 				strcpy_s(sendBuf, "/leave");
-				int ret = send(c, sendBuf, 255, 0);
+				ret = send(c, sendBuf, 255, 0);
 				if (ret == SOCKET_ERROR || ret == 0) {
 					cout << "发送命令失败" << endl;
+					running = false;
 				}
 				break;
 			}
 			case 4: {
 				strcpy_s(sendBuf, "/list");
-				int ret = send(c, sendBuf, 255, 0);
+				ret = send(c, sendBuf, 255, 0);
 				if (ret == SOCKET_ERROR || ret == 0) {
 					cout << "发送命令失败" << endl;
+					running = false;
 				}
 				break;
 			}
 			case 5: {
 				strcpy_s(sendBuf, "/help");
-				int ret = send(c, sendBuf, 255, 0);
+				ret = send(c, sendBuf, 255, 0);
 				if (ret == SOCKET_ERROR || ret == 0) {
 					cout << "发送命令失败" << endl;
+					running = false;
 				}
 				break;
 			}
@@ -116,15 +150,17 @@ public:
 					cout << "不能发送空消息" << endl;
 					return;
 				}
-				int ret = send(c, sendBuf, 255, 0);
+				ret = send(c, sendBuf, 255, 0);
 				if (ret == SOCKET_ERROR || ret == 0) {
 					cout << "发送消息失败" << endl;
+					running = false;
 				}
 				break;
 			}
 			case 7: {
 				strcpy_s(sendBuf, "q");
 				cout << "正在退出聊天室..." << endl;
+				running = false;
 				break;
 			}
 			default: {
@@ -140,23 +176,15 @@ public:
 		ret = send(c, name, 255, 0);
 		if (ret == SOCKET_ERROR || ret == 0) {
 			cout << "发送用户名失败" << endl;
+			running = false;
 			return;
 		}
 		nameSent = true;
 		
-		do {
-			showMenu();
-			int choice;
-			cin >> choice;
-			cin.ignore(1024, '\n');
-			
+		while (running) {
+			int choice = getMenuChoice();
 			handleMenuChoice(choice);
-			
-			if (strcmp(sendBuf, "q") == 0) {
-				return;
-			}
-			
-		} while (ret != SOCKET_ERROR && ret != 0);
+		}
 		return;
 	}
 	~client() {}
@@ -197,7 +225,7 @@ int main() {
 		int len = sizeof(myaddr);
 		getsockname(c1.c,(sockaddr*)&myaddr,&len);
 		cout<<"本地ip："<<inet_ntoa(myaddr.sin_addr)<<"   本地port:"<<ntohs(myaddr.sin_port)<<endl << "connect sever succeed，输入 q to exit" << endl;
-		thread h1(&client::recvData, c1);
+		thread h1(&client::recvData, &c1);
 		h1.detach();
 		c1.sendData();
 		closesocket(c1.c);
