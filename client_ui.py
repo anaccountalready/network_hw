@@ -2,6 +2,7 @@ import socket
 import threading
 import customtkinter as ctk
 from tkinter import messagebox, simpledialog
+import queue
 
 ctk.set_appearance_mode("light")
 ctk.set_default_color_theme("blue")
@@ -10,15 +11,21 @@ class ChatClientUI:
     def __init__(self):
         self.root = ctk.CTk()
         self.root.title("网络聊天室 - 客户端")
-        self.root.geometry("900x700")
+        self.root.geometry("1000x750")
         self.root.resizable(True, True)
         
         self.client_socket = None
         self.running = False
         self.username = ""
         self.current_room = "公共聊天室"
+        self.current_room_id = "public"
+        
+        self.message_queue = queue.Queue()
+        self.ui_ready = False
         
         self.setup_login_ui()
+        
+        self.root.after(100, self.process_message_queue)
         
     def setup_login_ui(self):
         self.login_frame = ctk.CTkFrame(self.root, corner_radius=15)
@@ -129,57 +136,92 @@ class ChatClientUI:
     def switch_to_chat_ui(self):
         self.login_frame.pack_forget()
         self.setup_chat_ui()
+        self.ui_ready = True
         
     def setup_chat_ui(self):
         self.main_frame = ctk.CTkFrame(self.root, corner_radius=0)
         self.main_frame.pack(expand=True, fill="both")
         
-        self.main_frame.grid_rowconfigure(0, weight=1)
+        self.main_frame.grid_rowconfigure(1, weight=1)
         self.main_frame.grid_columnconfigure(0, weight=3)
         self.main_frame.grid_columnconfigure(1, weight=1)
         
-        left_frame = ctk.CTkFrame(self.main_frame, corner_radius=0)
-        left_frame.grid(row=0, column=0, sticky="nsew", padx=(10, 5), pady=10)
-        
-        right_frame = ctk.CTkFrame(self.main_frame, corner_radius=0)
-        right_frame.grid(row=0, column=1, sticky="nsew", padx=(5, 10), pady=10)
-        
-        left_frame.grid_rowconfigure(1, weight=1)
-        left_frame.grid_columnconfigure(0, weight=1)
-        
-        header_frame = ctk.CTkFrame(left_frame, corner_radius=10)
-        header_frame.grid(row=0, column=0, sticky="ew", pady=(0, 10))
+        header_frame = ctk.CTkFrame(self.main_frame, corner_radius=10)
+        header_frame.grid(row=0, column=0, columnspan=2, sticky="ew", padx=10, pady=(10, 5))
         
         self.room_label = ctk.CTkLabel(
             header_frame,
-            text=f"📍 {self.current_room}",
+            text=f"📍 当前位置: {self.current_room}",
             font=ctk.CTkFont(size=18, weight="bold")
         )
-        self.room_label.pack(side="left", padx=15, pady=10)
+        self.room_label.pack(side="left", padx=20, pady=12)
         
         self.user_label = ctk.CTkLabel(
             header_frame,
             text=f"👤 {self.username}",
             font=ctk.CTkFont(size=14)
         )
-        self.user_label.pack(side="right", padx=15, pady=10)
+        self.user_label.pack(side="right", padx=20, pady=12)
         
-        chat_frame = ctk.CTkFrame(left_frame, corner_radius=10)
-        chat_frame.grid(row=1, column=0, sticky="nsew")
+        left_frame = ctk.CTkFrame(self.main_frame, corner_radius=0)
+        left_frame.grid(row=1, column=0, sticky="nsew", padx=(10, 5), pady=(5, 10))
         
-        chat_frame.grid_rowconfigure(0, weight=1)
-        chat_frame.grid_columnconfigure(0, weight=1)
+        left_frame.grid_rowconfigure(1, weight=1)
+        left_frame.grid_rowconfigure(3, weight=1)
+        left_frame.grid_columnconfigure(0, weight=1)
         
-        self.chat_text = ctk.CTkTextbox(
-            chat_frame,
+        public_chat_label = ctk.CTkLabel(
+            left_frame,
+            text="🌐 公共聊天室 (始终可见)",
+            font=ctk.CTkFont(size=14, weight="bold")
+        )
+        public_chat_label.grid(row=0, column=0, pady=(5, 2), sticky="w", padx=10)
+        
+        public_chat_frame = ctk.CTkFrame(left_frame, corner_radius=10)
+        public_chat_frame.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 10))
+        
+        public_chat_frame.grid_rowconfigure(0, weight=1)
+        public_chat_frame.grid_columnconfigure(0, weight=1)
+        
+        self.public_chat_text = ctk.CTkTextbox(
+            public_chat_frame,
             font=ctk.CTkFont(size=13),
             corner_radius=10,
             state="disabled"
         )
-        self.chat_text.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+        self.public_chat_text.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+        
+        private_chat_label = ctk.CTkLabel(
+            left_frame,
+            text="� 当前私有聊天室",
+            font=ctk.CTkFont(size=14, weight="bold")
+        )
+        private_chat_label.grid(row=2, column=0, pady=(5, 2), sticky="w", padx=10)
+        
+        private_chat_frame = ctk.CTkFrame(left_frame, corner_radius=10)
+        private_chat_frame.grid(row=3, column=0, sticky="nsew", padx=10, pady=(0, 10))
+        
+        private_chat_frame.grid_rowconfigure(0, weight=1)
+        private_chat_frame.grid_columnconfigure(0, weight=1)
+        
+        self.private_chat_text = ctk.CTkTextbox(
+            private_chat_frame,
+            font=ctk.CTkFont(size=13),
+            corner_radius=10,
+            state="disabled"
+        )
+        self.private_chat_text.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
         
         input_frame = ctk.CTkFrame(left_frame, corner_radius=10)
-        input_frame.grid(row=2, column=0, sticky="ew", pady=(10, 0))
+        input_frame.grid(row=4, column=0, sticky="ew", padx=10, pady=(0, 10))
+        
+        self.send_mode_label = ctk.CTkLabel(
+            input_frame,
+            text="发送到: 公共聊天室",
+            font=ctk.CTkFont(size=12),
+            text_color="gray"
+        )
+        self.send_mode_label.pack(side="left", padx=10, pady=5)
         
         self.message_entry = ctk.CTkEntry(
             input_frame,
@@ -200,7 +242,11 @@ class ChatClientUI:
         )
         self.send_btn.pack(side="right", padx=(0, 10), pady=10)
         
+        right_frame = ctk.CTkFrame(self.main_frame, corner_radius=0)
+        right_frame.grid(row=1, column=1, sticky="nsew", padx=(5, 10), pady=(5, 10))
+        
         right_frame.grid_rowconfigure(2, weight=1)
+        right_frame.grid_rowconfigure(4, weight=1)
         right_frame.grid_columnconfigure(0, weight=1)
         
         menu_label = ctk.CTkLabel(
@@ -239,6 +285,7 @@ class ChatClientUI:
             menu_frame,
             text="↩️ 离开私有聊天室",
             command=self.leave_private_room,
+            state="disabled",
             **btn_style
         )
         self.leave_room_btn.pack(fill="x", padx=10, pady=8)
@@ -288,40 +335,66 @@ class ChatClientUI:
         )
         self.info_text.pack(fill="both", expand=True, padx=10, pady=10)
         
+    def process_message_queue(self):
+        while not self.message_queue.empty():
+            message = self.message_queue.get()
+            if self.ui_ready:
+                self._display_message(message)
+        
+        self.root.after(100, self.process_message_queue)
+        
     def receive_messages(self):
         while self.running:
             try:
                 message = self.client_socket.recv(1024).decode('gbk')
                 if message:
-                    self.root.after(0, lambda m=message: self.display_message(m))
+                    self.message_queue.put(message)
             except:
                 if self.running:
                     self.root.after(0, self.handle_disconnect)
                 break
                 
-    def display_message(self, message):
+    def _display_message(self, message):
         if "[系统]" in message:
             if "房间号：" in message:
                 room_id = message.split("房间号：")[-1].strip()
                 self.current_room = f"私有聊天室 {room_id}"
-                self.room_label.configure(text=f"📍 {self.current_room}")
+                self.current_room_id = room_id
+                self.room_label.configure(text=f"📍 当前位置: {self.current_room}")
+                self.send_mode_label.configure(text=f"发送到: 私有聊天室 {room_id}")
+                self.leave_room_btn.configure(state="normal")
             elif "成功加入房间" in message:
                 room_id = message.split("房间 ")[-1].strip()
                 self.current_room = f"私有聊天室 {room_id}"
-                self.room_label.configure(text=f"📍 {self.current_room}")
+                self.current_room_id = room_id
+                self.room_label.configure(text=f"📍 当前位置: {self.current_room}")
+                self.send_mode_label.configure(text=f"发送到: 私有聊天室 {room_id}")
+                self.leave_room_btn.configure(state="normal")
             elif "回到公共聊天室" in message:
                 self.current_room = "公共聊天室"
-                self.room_label.configure(text=f"📍 {self.current_room}")
+                self.current_room_id = "public"
+                self.room_label.configure(text=f"📍 当前位置: {self.current_room}")
+                self.send_mode_label.configure(text="发送到: 公共聊天室")
+                self.leave_room_btn.configure(state="disabled")
             
             self.info_text.configure(state="normal")
             self.info_text.insert("end", message + "\n\n")
             self.info_text.see("end")
             self.info_text.configure(state="disabled")
         else:
-            self.chat_text.configure(state="normal")
-            self.chat_text.insert("end", message + "\n\n")
-            self.chat_text.see("end")
-            self.chat_text.configure(state="disabled")
+            if message.startswith("[公共]"):
+                self.public_chat_text.configure(state="normal")
+                self.public_chat_text.insert("end", message + "\n\n")
+                self.public_chat_text.see("end")
+                self.public_chat_text.configure(state="disabled")
+            elif self.current_room_id != "public" and message.startswith(f"[{self.current_room_id}]"):
+                self.private_chat_text.configure(state="normal")
+                self.private_chat_text.insert("end", message + "\n\n")
+                self.private_chat_text.see("end")
+                self.private_chat_text.configure(state="disabled")
+            
+    def display_message(self, message):
+        pass
             
     def send_message(self):
         message = self.message_entry.get().strip()

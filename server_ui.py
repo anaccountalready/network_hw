@@ -220,10 +220,15 @@ class ChatServerUI:
         except:
             pass
             
+    def broadcast_to_all(self, message, exclude_sock=None):
+        for sock in self.clients:
+            if sock != exclude_sock:
+                self.send_to_client(sock, message)
+                
     def broadcast_to_room(self, room_id, message, exclude_sock=None):
         if room_id == "public":
             for sock in self.clients:
-                if sock != exclude_sock and self.client_rooms.get(sock, "public") == "public":
+                if sock != exclude_sock:
                     self.send_to_client(sock, message)
         else:
             if room_id in self.private_rooms:
@@ -249,7 +254,7 @@ class ChatServerUI:
                     del self.private_rooms[current_room]
                     self.log_message(f"私有聊天室 {current_room} 已解散")
             else:
-                self.broadcast_to_room("public", f"[系统] {sender_name} 离开了公共聊天室", sender_sock)
+                self.broadcast_to_all(f"[系统] {sender_name} 离开了公共聊天室", sender_sock)
                 
             self.client_rooms[sender_sock] = room_id
             
@@ -285,7 +290,7 @@ class ChatServerUI:
                     del self.private_rooms[current_room]
                     self.log_message(f"私有聊天室 {current_room} 已解散")
             else:
-                self.broadcast_to_room("public", f"[系统] {sender_name} 离开了公共聊天室", sender_sock)
+                self.broadcast_to_all(f"[系统] {sender_name} 离开了公共聊天室", sender_sock)
                 
             self.client_rooms[sender_sock] = room_id
             self.private_rooms[room_id].add(sender_sock)
@@ -309,7 +314,7 @@ class ChatServerUI:
                 self.log_message(f"私有聊天室 {current_room} 已解散")
                 
             self.client_rooms[sender_sock] = "public"
-            self.broadcast_to_room("public", f"[系统] {sender_name} 回到了公共聊天室")
+            self.broadcast_to_all(f"[系统] {sender_name} 回到了公共聊天室")
             self.send_to_client(sender_sock, "[系统] 您已回到公共聊天室")
             self.log_message(f"用户 {sender_name} 回到了公共聊天室")
             self.update_rooms_list()
@@ -366,7 +371,7 @@ class ChatServerUI:
             welcome += "[系统] 输入 /menu 查看菜单，/help 查看帮助\n"
             self.send_to_client(client_sock, welcome)
             
-            self.broadcast_to_room("public", f"[系统] {username} 加入了公共聊天室", client_sock)
+            self.broadcast_to_all(f"[系统] {username} 加入了公共聊天室", client_sock)
             self.log_message(f"用户 {username} 已登录")
             self.update_users_list()
             
@@ -385,9 +390,14 @@ class ChatServerUI:
                         break
                     else:
                         current_room = self.client_rooms.get(client_sock, "public")
-                        room_display = "公共" if current_room == "public" else current_room
-                        full_message = f"[{room_display}] {username} 说: {message}"
-                        self.broadcast_to_room(current_room, full_message, client_sock)
+                        if current_room == "public":
+                            room_display = "公共"
+                            full_message = f"[公共] {username} 说: {message}"
+                            self.broadcast_to_all(full_message, client_sock)
+                        else:
+                            room_display = current_room
+                            full_message = f"[{room_display}] {username} 说: {message}"
+                            self.broadcast_to_room(current_room, full_message, client_sock)
                         
                 except Exception as e:
                     self.log_message(f"接收消息时出错: {str(e)}")
@@ -407,7 +417,7 @@ class ChatServerUI:
                     del self.private_rooms[current_room]
                     self.log_message(f"私有聊天室 {current_room} 已解散")
             else:
-                self.broadcast_to_room("public", f"{username} 离开了聊天室", client_sock)
+                self.broadcast_to_all(f"{username} 离开了聊天室", client_sock)
                 
             if client_sock in self.clients:
                 del self.clients[client_sock]
