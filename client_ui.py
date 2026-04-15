@@ -7,11 +7,17 @@ import queue
 ctk.set_appearance_mode("light")
 ctk.set_default_color_theme("blue")
 
+class ScrollableFrame(ctk.CTkScrollableFrame):
+    def __init__(self, master, **kwargs):
+        super().__init__(master, **kwargs)
+        self.grid_columnconfigure(0, weight=1)
+
 class ChatClientUI:
     def __init__(self):
         self.root = ctk.CTk()
         self.root.title("网络聊天室 - 客户端")
         self.root.geometry("1000x750")
+        self.root.minsize(700, 500)
         self.root.resizable(True, True)
         
         self.client_socket = None
@@ -29,59 +35,59 @@ class ChatClientUI:
         
     def setup_login_ui(self):
         self.login_frame = ctk.CTkFrame(self.root, corner_radius=15)
-        self.login_frame.pack(expand=True, fill="both", padx=50, pady=50)
+        self.login_frame.pack(expand=True, fill="both", padx=20, pady=20)
         
         title_label = ctk.CTkLabel(
             self.login_frame, 
             text="网络聊天室", 
-            font=ctk.CTkFont(size=32, weight="bold")
+            font=ctk.CTkFont(size=28, weight="bold")
         )
-        title_label.pack(pady=(40, 10))
+        title_label.pack(pady=(30, 10))
         
         subtitle_label = ctk.CTkLabel(
             self.login_frame, 
             text="请输入连接信息", 
             font=ctk.CTkFont(size=14)
         )
-        subtitle_label.pack(pady=(0, 40))
+        subtitle_label.pack(pady=(0, 30))
         
         input_frame = ctk.CTkFrame(self.login_frame, fg_color="transparent")
-        input_frame.pack(expand=True, fill="x", padx=50)
+        input_frame.pack(expand=True, fill="x", padx=20)
         
         self.username_entry = ctk.CTkEntry(
             input_frame, 
             placeholder_text="请输入昵称",
-            height=45,
+            height=40,
             font=ctk.CTkFont(size=14)
         )
-        self.username_entry.pack(fill="x", pady=10)
+        self.username_entry.pack(fill="x", pady=8)
         
         self.ip_entry = ctk.CTkEntry(
             input_frame, 
             placeholder_text="服务器IP地址 (如: 127.0.0.1)",
-            height=45,
+            height=40,
             font=ctk.CTkFont(size=14)
         )
-        self.ip_entry.pack(fill="x", pady=10)
+        self.ip_entry.pack(fill="x", pady=8)
         self.ip_entry.insert(0, "127.0.0.1")
         
         self.port_entry = ctk.CTkEntry(
             input_frame, 
             placeholder_text="端口号 (如: 8888)",
-            height=45,
+            height=40,
             font=ctk.CTkFont(size=14)
         )
-        self.port_entry.pack(fill="x", pady=10)
+        self.port_entry.pack(fill="x", pady=8)
         self.port_entry.insert(0, "8888")
         
         self.connect_btn = ctk.CTkButton(
             input_frame,
             text="连接服务器",
-            height=50,
+            height=45,
             font=ctk.CTkFont(size=16, weight="bold"),
             command=self.connect_to_server
         )
-        self.connect_btn.pack(fill="x", pady=(30, 10))
+        self.connect_btn.pack(fill="x", pady=(20, 10))
         
         self.status_label = ctk.CTkLabel(
             input_frame,
@@ -144,7 +150,7 @@ class ChatClientUI:
         
         self.main_frame.grid_rowconfigure(1, weight=1)
         self.main_frame.grid_columnconfigure(0, weight=3)
-        self.main_frame.grid_columnconfigure(1, weight=1)
+        self.main_frame.grid_columnconfigure(1, weight=0, minsize=200)
         
         header_frame = ctk.CTkFrame(self.main_frame, corner_radius=10)
         header_frame.grid(row=0, column=0, columnspan=2, sticky="ew", padx=10, pady=(10, 5))
@@ -152,16 +158,16 @@ class ChatClientUI:
         self.room_label = ctk.CTkLabel(
             header_frame,
             text=f"📍 当前位置: {self.current_room}",
-            font=ctk.CTkFont(size=18, weight="bold")
+            font=ctk.CTkFont(size=16, weight="bold")
         )
-        self.room_label.pack(side="left", padx=20, pady=12)
+        self.room_label.pack(side="left", padx=15, pady=10)
         
         self.user_label = ctk.CTkLabel(
             header_frame,
             text=f"👤 {self.username}",
             font=ctk.CTkFont(size=14)
         )
-        self.user_label.pack(side="right", padx=20, pady=12)
+        self.user_label.pack(side="right", padx=15, pady=10)
         
         left_frame = ctk.CTkFrame(self.main_frame, corner_radius=0)
         left_frame.grid(row=1, column=0, sticky="nsew", padx=(10, 5), pady=(5, 10))
@@ -173,44 +179,44 @@ class ChatClientUI:
         public_chat_label = ctk.CTkLabel(
             left_frame,
             text="🌐 公共聊天室 (始终可见)",
-            font=ctk.CTkFont(size=14, weight="bold")
+            font=ctk.CTkFont(size=13, weight="bold")
         )
         public_chat_label.grid(row=0, column=0, pady=(5, 2), sticky="w", padx=10)
         
         public_chat_frame = ctk.CTkFrame(left_frame, corner_radius=10)
-        public_chat_frame.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 10))
+        public_chat_frame.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 5))
         
         public_chat_frame.grid_rowconfigure(0, weight=1)
         public_chat_frame.grid_columnconfigure(0, weight=1)
         
         self.public_chat_text = ctk.CTkTextbox(
             public_chat_frame,
-            font=ctk.CTkFont(size=13),
+            font=ctk.CTkFont(size=12),
             corner_radius=10,
             state="disabled"
         )
-        self.public_chat_text.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+        self.public_chat_text.grid(row=0, column=0, sticky="nsew", padx=8, pady=8)
         
         private_chat_label = ctk.CTkLabel(
             left_frame,
-            text="� 当前私有聊天室",
-            font=ctk.CTkFont(size=14, weight="bold")
+            text="🔒 当前私有聊天室",
+            font=ctk.CTkFont(size=13, weight="bold")
         )
         private_chat_label.grid(row=2, column=0, pady=(5, 2), sticky="w", padx=10)
         
         private_chat_frame = ctk.CTkFrame(left_frame, corner_radius=10)
-        private_chat_frame.grid(row=3, column=0, sticky="nsew", padx=10, pady=(0, 10))
+        private_chat_frame.grid(row=3, column=0, sticky="nsew", padx=10, pady=(0, 5))
         
         private_chat_frame.grid_rowconfigure(0, weight=1)
         private_chat_frame.grid_columnconfigure(0, weight=1)
         
         self.private_chat_text = ctk.CTkTextbox(
             private_chat_frame,
-            font=ctk.CTkFont(size=13),
+            font=ctk.CTkFont(size=12),
             corner_radius=10,
             state="disabled"
         )
-        self.private_chat_text.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+        self.private_chat_text.grid(row=0, column=0, sticky="nsew", padx=8, pady=8)
         
         input_frame = ctk.CTkFrame(left_frame, corner_radius=10)
         input_frame.grid(row=4, column=0, sticky="ew", padx=10, pady=(0, 10))
@@ -218,7 +224,7 @@ class ChatClientUI:
         self.send_mode_label = ctk.CTkLabel(
             input_frame,
             text="发送到: 公共聊天室",
-            font=ctk.CTkFont(size=12),
+            font=ctk.CTkFont(size=11),
             text_color="gray"
         )
         self.send_mode_label.pack(side="left", padx=10, pady=5)
@@ -226,114 +232,117 @@ class ChatClientUI:
         self.message_entry = ctk.CTkEntry(
             input_frame,
             placeholder_text="输入消息...",
-            height=45,
-            font=ctk.CTkFont(size=14)
+            height=38,
+            font=ctk.CTkFont(size=13)
         )
-        self.message_entry.pack(side="left", fill="x", expand=True, padx=(10, 10), pady=10)
+        self.message_entry.pack(side="left", fill="x", expand=True, padx=(10, 10), pady=8)
         self.message_entry.bind("<Return>", lambda event: self.send_message())
         
         self.send_btn = ctk.CTkButton(
             input_frame,
             text="发送",
-            width=100,
-            height=45,
-            font=ctk.CTkFont(size=14, weight="bold"),
+            width=80,
+            height=38,
+            font=ctk.CTkFont(size=13, weight="bold"),
             command=self.send_message
         )
-        self.send_btn.pack(side="right", padx=(0, 10), pady=10)
+        self.send_btn.pack(side="right", padx=(0, 10), pady=8)
         
         right_frame = ctk.CTkFrame(self.main_frame, corner_radius=0)
         right_frame.grid(row=1, column=1, sticky="nsew", padx=(5, 10), pady=(5, 10))
         
-        right_frame.grid_rowconfigure(2, weight=1)
+        right_frame.grid_rowconfigure(2, weight=0)
         right_frame.grid_rowconfigure(4, weight=1)
         right_frame.grid_columnconfigure(0, weight=1)
         
         menu_label = ctk.CTkLabel(
             right_frame,
             text="功能菜单",
-            font=ctk.CTkFont(size=16, weight="bold")
+            font=ctk.CTkFont(size=14, weight="bold")
         )
         menu_label.grid(row=0, column=0, pady=(10, 5))
         
-        menu_frame = ctk.CTkFrame(right_frame, corner_radius=10)
-        menu_frame.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 10))
+        menu_scroll_frame = ScrollableFrame(right_frame, corner_radius=10)
+        menu_scroll_frame.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 5))
         
         btn_style = {
-            "height": 40,
-            "font": ctk.CTkFont(size=13),
+            "height": 35,
+            "font": ctk.CTkFont(size=12),
             "corner_radius": 8
         }
         
         self.create_room_btn = ctk.CTkButton(
-            menu_frame,
+            menu_scroll_frame,
             text="🏠 创建私有聊天室",
             command=self.create_private_room,
             **btn_style
         )
-        self.create_room_btn.pack(fill="x", padx=10, pady=8)
+        self.create_room_btn.pack(fill="x", padx=8, pady=6)
         
         self.join_room_btn = ctk.CTkButton(
-            menu_frame,
+            menu_scroll_frame,
             text="🚪 加入私有聊天室",
             command=self.join_private_room,
             **btn_style
         )
-        self.join_room_btn.pack(fill="x", padx=10, pady=8)
+        self.join_room_btn.pack(fill="x", padx=8, pady=6)
         
         self.leave_room_btn = ctk.CTkButton(
-            menu_frame,
+            menu_scroll_frame,
             text="↩️ 离开私有聊天室",
             command=self.leave_private_room,
             state="disabled",
             **btn_style
         )
-        self.leave_room_btn.pack(fill="x", padx=10, pady=8)
+        self.leave_room_btn.pack(fill="x", padx=8, pady=6)
         
         self.list_rooms_btn = ctk.CTkButton(
-            menu_frame,
+            menu_scroll_frame,
             text="📋 查看所有聊天室",
             command=self.list_rooms,
             **btn_style
         )
-        self.list_rooms_btn.pack(fill="x", padx=10, pady=8)
+        self.list_rooms_btn.pack(fill="x", padx=8, pady=6)
         
         self.help_btn = ctk.CTkButton(
-            menu_frame,
+            menu_scroll_frame,
             text="❓ 帮助信息",
             command=self.show_help,
             **btn_style
         )
-        self.help_btn.pack(fill="x", padx=10, pady=8)
+        self.help_btn.pack(fill="x", padx=8, pady=6)
         
         self.disconnect_btn = ctk.CTkButton(
-            menu_frame,
+            menu_scroll_frame,
             text="🚪 退出聊天室",
             command=self.disconnect,
             fg_color="#dc3545",
             hover_color="#c82333",
             **btn_style
         )
-        self.disconnect_btn.pack(fill="x", padx=10, pady=8)
+        self.disconnect_btn.pack(fill="x", padx=8, pady=6)
         
         info_label = ctk.CTkLabel(
             right_frame,
             text="系统消息",
-            font=ctk.CTkFont(size=16, weight="bold")
+            font=ctk.CTkFont(size=14, weight="bold")
         )
-        info_label.grid(row=2, column=0, pady=(10, 5), sticky="s")
+        info_label.grid(row=2, column=0, pady=(10, 5))
         
         info_frame = ctk.CTkFrame(right_frame, corner_radius=10)
-        info_frame.grid(row=3, column=0, sticky="ew", padx=10, pady=(0, 10))
+        info_frame.grid(row=3, column=0, sticky="nsew", padx=10, pady=(0, 10))
+        
+        info_frame.grid_rowconfigure(0, weight=1)
+        info_frame.grid_columnconfigure(0, weight=1)
         
         self.info_text = ctk.CTkTextbox(
             info_frame,
-            height=150,
-            font=ctk.CTkFont(size=12),
+            height=120,
+            font=ctk.CTkFont(size=11),
             corner_radius=10,
             state="disabled"
         )
-        self.info_text.pack(fill="both", expand=True, padx=10, pady=10)
+        self.info_text.grid(row=0, column=0, sticky="nsew", padx=8, pady=8)
         
     def process_message_queue(self):
         while not self.message_queue.empty():

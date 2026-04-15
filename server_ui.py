@@ -9,11 +9,17 @@ import string
 ctk.set_appearance_mode("light")
 ctk.set_default_color_theme("blue")
 
+class ScrollableFrame(ctk.CTkScrollableFrame):
+    def __init__(self, master, **kwargs):
+        super().__init__(master, **kwargs)
+        self.grid_columnconfigure(0, weight=1)
+
 class ChatServerUI:
     def __init__(self):
         self.root = ctk.CTk()
         self.root.title("网络聊天室 - 服务器")
         self.root.geometry("900x700")
+        self.root.minsize(700, 500)
         self.root.resizable(True, True)
         
         self.server_socket = None
@@ -31,33 +37,33 @@ class ChatServerUI:
         
         self.main_frame.grid_rowconfigure(1, weight=1)
         self.main_frame.grid_columnconfigure(0, weight=3)
-        self.main_frame.grid_columnconfigure(1, weight=1)
+        self.main_frame.grid_columnconfigure(1, weight=0, minsize=200)
         
         control_frame = ctk.CTkFrame(self.main_frame, corner_radius=10)
-        control_frame.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 10))
+        control_frame.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 5))
         
         title_label = ctk.CTkLabel(
             control_frame,
             text="网络聊天室服务器",
-            font=ctk.CTkFont(size=24, weight="bold")
+            font=ctk.CTkFont(size=20, weight="bold")
         )
-        title_label.pack(side="left", padx=20, pady=15)
+        title_label.pack(side="left", padx=15, pady=10)
         
         port_frame = ctk.CTkFrame(control_frame, fg_color="transparent")
-        port_frame.pack(side="left", padx=20)
+        port_frame.pack(side="left", padx=15)
         
         port_label = ctk.CTkLabel(
             port_frame,
             text="端口号:",
-            font=ctk.CTkFont(size=14)
+            font=ctk.CTkFont(size=13)
         )
-        port_label.pack(side="left", padx=(0, 10))
+        port_label.pack(side="left", padx=(0, 8))
         
         self.port_entry = ctk.CTkEntry(
             port_frame,
-            width=100,
-            height=35,
-            font=ctk.CTkFont(size=14)
+            width=80,
+            height=32,
+            font=ctk.CTkFont(size=13)
         )
         self.port_entry.pack(side="left")
         self.port_entry.insert(0, "8888")
@@ -65,19 +71,19 @@ class ChatServerUI:
         self.start_btn = ctk.CTkButton(
             control_frame,
             text="🚀 启动服务器",
-            width=150,
-            height=40,
-            font=ctk.CTkFont(size=14, weight="bold"),
+            width=120,
+            height=35,
+            font=ctk.CTkFont(size=13, weight="bold"),
             command=self.start_server
         )
-        self.start_btn.pack(side="right", padx=20, pady=10)
+        self.start_btn.pack(side="right", padx=15, pady=10)
         
         self.stop_btn = ctk.CTkButton(
             control_frame,
             text="⏹️ 停止服务器",
-            width=150,
-            height=40,
-            font=ctk.CTkFont(size=14, weight="bold"),
+            width=120,
+            height=35,
+            font=ctk.CTkFont(size=13, weight="bold"),
             command=self.stop_server,
             state="disabled",
             fg_color="#dc3545",
@@ -85,21 +91,24 @@ class ChatServerUI:
         )
         self.stop_btn.pack(side="right", padx=(0, 10), pady=10)
         
-        left_frame = ctk.CTkFrame(self.main_frame, corner_radius=10)
-        left_frame.grid(row=1, column=0, sticky="nsew", padx=(0, 5))
+        left_frame = ctk.CTkFrame(self.main_frame, corner_radius=0)
+        left_frame.grid(row=1, column=0, sticky="nsew", padx=(0, 5), pady=(5, 0))
         
         left_frame.grid_rowconfigure(1, weight=1)
         left_frame.grid_columnconfigure(0, weight=1)
         
         log_label = ctk.CTkLabel(
             left_frame,
-            text="服务器日志",
-            font=ctk.CTkFont(size=16, weight="bold")
+            text="📋 服务器日志",
+            font=ctk.CTkFont(size=14, weight="bold")
         )
-        log_label.grid(row=0, column=0, pady=(10, 5))
+        log_label.grid(row=0, column=0, pady=(5, 2), sticky="w", padx=10)
         
         log_frame = ctk.CTkFrame(left_frame, corner_radius=10)
         log_frame.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 10))
+        
+        log_frame.grid_rowconfigure(0, weight=1)
+        log_frame.grid_columnconfigure(0, weight=1)
         
         self.log_text = ctk.CTkTextbox(
             log_frame,
@@ -107,10 +116,10 @@ class ChatServerUI:
             corner_radius=10,
             state="disabled"
         )
-        self.log_text.pack(fill="both", expand=True, padx=10, pady=10)
+        self.log_text.grid(row=0, column=0, sticky="nsew", padx=8, pady=8)
         
-        right_frame = ctk.CTkFrame(self.main_frame, corner_radius=10)
-        right_frame.grid(row=1, column=1, sticky="nsew", padx=(5, 0))
+        right_frame = ctk.CTkFrame(self.main_frame, corner_radius=0)
+        right_frame.grid(row=1, column=1, sticky="nsew", padx=(5, 0), pady=(5, 0))
         
         right_frame.grid_rowconfigure(1, weight=1)
         right_frame.grid_rowconfigure(3, weight=1)
@@ -118,57 +127,63 @@ class ChatServerUI:
         
         users_label = ctk.CTkLabel(
             right_frame,
-            text="在线用户",
-            font=ctk.CTkFont(size=16, weight="bold")
+            text="👥 在线用户",
+            font=ctk.CTkFont(size=14, weight="bold")
         )
-        users_label.grid(row=0, column=0, pady=(10, 5))
+        users_label.grid(row=0, column=0, pady=(5, 2), sticky="w", padx=10)
         
         users_frame = ctk.CTkFrame(right_frame, corner_radius=10)
-        users_frame.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 10))
+        users_frame.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 5))
+        
+        users_frame.grid_rowconfigure(0, weight=1)
+        users_frame.grid_columnconfigure(0, weight=1)
         
         self.users_list = ctk.CTkTextbox(
             users_frame,
-            font=ctk.CTkFont(size=12),
+            font=ctk.CTkFont(size=11),
             corner_radius=10,
             state="disabled"
         )
-        self.users_list.pack(fill="both", expand=True, padx=10, pady=10)
+        self.users_list.grid(row=0, column=0, sticky="nsew", padx=8, pady=8)
         
         rooms_label = ctk.CTkLabel(
             right_frame,
-            text="私有聊天室",
-            font=ctk.CTkFont(size=16, weight="bold")
+            text="🏠 私有聊天室",
+            font=ctk.CTkFont(size=14, weight="bold")
         )
-        rooms_label.grid(row=2, column=0, pady=(10, 5))
+        rooms_label.grid(row=2, column=0, pady=(5, 2), sticky="w", padx=10)
         
         rooms_frame = ctk.CTkFrame(right_frame, corner_radius=10)
         rooms_frame.grid(row=3, column=0, sticky="nsew", padx=10, pady=(0, 10))
         
+        rooms_frame.grid_rowconfigure(0, weight=1)
+        rooms_frame.grid_columnconfigure(0, weight=1)
+        
         self.rooms_list = ctk.CTkTextbox(
             rooms_frame,
-            font=ctk.CTkFont(size=12),
+            font=ctk.CTkFont(size=11),
             corner_radius=10,
             state="disabled"
         )
-        self.rooms_list.pack(fill="both", expand=True, padx=10, pady=10)
+        self.rooms_list.grid(row=0, column=0, sticky="nsew", padx=8, pady=8)
         
         status_frame = ctk.CTkFrame(self.main_frame, corner_radius=10)
-        status_frame.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(10, 0))
+        status_frame.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(5, 0))
         
         self.status_label = ctk.CTkLabel(
             status_frame,
             text="服务器状态: 未启动",
-            font=ctk.CTkFont(size=14),
+            font=ctk.CTkFont(size=13),
             text_color="gray"
         )
-        self.status_label.pack(side="left", padx=20, pady=10)
+        self.status_label.pack(side="left", padx=15, pady=8)
         
         self.online_count_label = ctk.CTkLabel(
             status_frame,
             text="在线用户: 0",
-            font=ctk.CTkFont(size=14)
+            font=ctk.CTkFont(size=13)
         )
-        self.online_count_label.pack(side="right", padx=20, pady=10)
+        self.online_count_label.pack(side="right", padx=15, pady=8)
         
     def log_message(self, message):
         timestamp = time.strftime("%H:%M:%S")
@@ -188,7 +203,7 @@ class ChatServerUI:
             for sock, name in self.client_names.items():
                 room = self.client_rooms.get(sock, "public")
                 room_display = "公共聊天室" if room == "public" else f"房间 {room}"
-                self.users_list.insert("end", f"👤 {name} ({room_display})\n")
+                self.users_list.insert("end", f"👤 {name}\n   ({room_display})\n")
                 
         self.users_list.configure(state="disabled")
         self.online_count_label.configure(text=f"在线用户: {len(self.client_names)}")
